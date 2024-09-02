@@ -1,0 +1,78 @@
+// Définir les variables d'environnement
+def GITHUB_REPO = "https://github.com/monorganisation/mon-application.git"
+def staging-inventory = "staging-hosts"
+def production-inventory = "prod-hosts"
+
+pipeline {
+    agent any
+
+    stages {
+        stage('Checkout du code source') {
+            steps {
+                git url: GITHUB_REPO
+            }
+        }
+
+        stage('Construire et exécuter les tests unitaires') {
+            steps {
+                // Construire l'image Docker
+                docker.build("my-app")
+
+                // Exécuter les tests unitaires
+                docker.image("my-app").run {
+                    sh "pytest tests/unit/"
+                }
+            }
+        }
+
+        stage('Exécuter les analyses de sécurité') {
+            steps {
+                // Exécuter l'analyse SonarQube
+                withSonarQubeEnv('SonarQube') {
+                    sh "sonar-scanner"
+                }
+
+                // Exécuter l'analyse CodeScene
+                sh "codescene analyze"
+            }
+        }
+
+        stage('Exécuter les tests d'intégration') {
+            steps {
+                // Exécuter les tests d'intégration
+                docker.image("my-app").run {
+                    sh "pytest tests/integration/"
+                }
+            }
+        }
+
+        stage('Déployer sur l'environnement de staging') {
+            steps {
+                // Déployer sur l'environnement de staging
+                ansiblePlaybook inventory: "${staging-inventory}", playbook: 'deploy-playbook.yml'
+            }
+        }
+
+        stage('Attendre l'approbation manuelle') {
+            steps {
+                // Attendre l'approbation manuelle
+                input "Voulez-vous déployer en production ?"
+            }
+        }
+
+        stage('Déployer en production') {
+            steps {
+                // Déployer sur l'environnement de production
+                ansiblePlaybook inventory: "${production-inventory}", playbook: 'deploy-playbook.yml'
+            }
+        }
+    }
+{}
+    post {
+        always {
+            // Nettoyer les conteneurs Docker
+            sh "docker rmi my-app"
+        }
+
+
+}
